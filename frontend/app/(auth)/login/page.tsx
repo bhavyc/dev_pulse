@@ -1,0 +1,111 @@
+"use client";
+
+import React, { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth-context";
+import { apiClient } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Activity, ArrowRight, ShieldCheck } from "lucide-react";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const res = await apiClient.post<any>("/auth/login", { email, password });
+      if (res.data) {
+        login(res.data.token, res.data.user, res.data.team);
+        router.push("/dashboard");
+      }
+    } catch (err: any) {
+      setError(err.message || "Invalid email or password");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#090a0f] p-4 text-slate-100">
+      <div className="w-full max-w-md space-y-6 rounded-2xl border border-[#232838] bg-[#11131a]/80 p-8 shadow-2xl backdrop-blur-xl">
+        {/* Brand header */}
+        <div className="flex flex-col items-center text-center space-y-2">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-400">
+            <Activity className="h-6 w-6" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">DevPulse</h1>
+          <p className="text-sm text-slate-400">
+            Real-time API & website monitoring at ₹0 budget
+          </p>
+        </div>
+
+        {error && (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-400">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Email Address
+            </label>
+            <Input
+              type="email"
+              placeholder="developer@acme.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-slate-300">
+                Password
+              </label>
+              <Link
+                href="/forgot-password"
+                className="text-xs text-indigo-400 hover:text-indigo-300"
+              >
+                Forgot password?
+              </Link>
+            </div>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <Button type="submit" className="w-full gap-2" isLoading={isLoading}>
+            Sign In
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </form>
+
+        <div className="pt-2 text-center text-xs text-slate-400 border-t border-[#232838]">
+          Don't have an account?{" "}
+          <Link
+            href="/register"
+            className="font-medium text-indigo-400 hover:text-indigo-300"
+          >
+            Create one free
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}

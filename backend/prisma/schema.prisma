@@ -1,0 +1,245 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MonitorStatus {
+  PENDING
+  UP
+  DOWN
+}
+
+enum IncidentStatus {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+}
+
+enum AlertChannelType {
+  EMAIL
+}
+
+enum AlertType {
+  DOWN
+  RECOVERY
+}
+
+model User {
+  id                     String       @id @default(uuid())
+  email                  String       @unique
+  passwordHash           String       @map("password_hash")
+  name                   String
+  avatarUrl              String?      @map("avatar_url")
+  resetPasswordToken     String?      @map("reset_password_token")
+  resetPasswordExpiresAt DateTime?    @map("reset_password_expires_at")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  updatedAt              DateTime     @updatedAt @map("updated_at")
+
+  teamMembers            TeamMember[]
+  ownedTeams             Team[]       @relation("TeamOwner")
+  invitationsCreated     Invitation[] @relation("InvitedBy")
+
+  @@map("users")
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner     User     @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+  monitors  Monitor[]
+  invitations Invitation[]
+  statusPages StatusPage[]
+  notificationChannels NotificationChannel[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String   @map("team_id")
+  userId    String   @map("user_id")
+  role      UserRole @default(MEMBER)
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Invitation {
+  id         String   @id @default(uuid())
+  teamId     String   @map("team_id")
+  email      String
+  role       UserRole @default(MEMBER)
+  token      String   @unique
+  invitedById String? @map("invited_by_id")
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  invitedBy  User?    @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@map("invitations")
+}
+
+model Monitor {
+  id                   String        @id @default(uuid())
+  teamId               String        @map("team_id")
+  name                 String
+  url                  String
+  httpMethod           String        @default("GET") @map("http_method")
+  checkIntervalSeconds Int           @default(300) @map("check_interval_seconds")
+  timeoutSeconds       Int           @default(10) @map("timeout_seconds")
+  expectedStatusCodes  Int[]         @default([200]) @map("expected_status_codes")
+  requestHeaders       Json?         @map("request_headers")
+  requestBody          String?       @map("request_body")
+  isActive             Boolean       @default(true) @map("is_active")
+  isPaused             Boolean       @default(false) @map("is_paused")
+  currentStatus        MonitorStatus @default(PENDING) @map("current_status")
+  lastCheckedAt        DateTime?     @map("last_checked_at")
+  uptimePercentage     Float         @default(100.0) @map("uptime_percentage")
+  consecutiveFailures  Int           @default(0) @map("consecutive_failures")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  team                 Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  checks               MonitorCheck[]
+  incidents            Incident[]
+  statusPageMonitors   StatusPageMonitor[]
+
+  @@index([teamId])
+  @@index([isActive, isPaused, lastCheckedAt])
+  @@map("monitors")
+}
+
+model MonitorCheck {
+  id             String    @id @default(uuid())
+  monitorId      String    @map("monitor_id")
+  statusCode     Int?      @map("status_code")
+  responseTimeMs Int?      @map("response_time_ms")
+  isSuccess      Boolean   @map("is_success")
+  errorMessage   String?   @map("error_message")
+  timingDetails  Json?     @map("timing_details")
+  checkedAt      DateTime  @default(now()) @map("checked_at")
+
+  monitor        Monitor   @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, checkedAt(sort: Desc)])
+  @@index([checkedAt])
+  @@map("monitor_checks")
+}
+
+model Incident {
+  id              String         @id @default(uuid())
+  monitorId       String         @map("monitor_id")
+  title           String
+  failureReason   String         @map("failure_reason")
+  status          IncidentStatus @default(INVESTIGATING)
+  startedAt       DateTime       @default(now()) @map("started_at")
+  resolvedAt      DateTime?      @map("resolved_at")
+  durationSeconds Int?           @map("duration_seconds")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  monitor         Monitor        @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  updates         IncidentUpdate[]
+  alertLogs       AlertLog[]
+
+  @@index([monitorId, status])
+  @@map("incidents")
+}
+
+model IncidentUpdate {
+  id         String         @id @default(uuid())
+  incidentId String         @map("incident_id")
+  status     IncidentStatus
+  message    String
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  incident   Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@map("incident_updates")
+}
+
+model NotificationChannel {
+  id               String           @id @default(uuid())
+  teamId           String           @map("team_id")
+  type             AlertChannelType @default(EMAIL)
+  destination      String
+  isEnabled        Boolean          @default(true) @map("is_enabled")
+  notifyOnDown     Boolean          @default(true) @map("notify_on_down")
+  notifyOnRecovery Boolean          @default(true) @map("notify_on_recovery")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  team             Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  alertLogs        AlertLog[]
+
+  @@map("notification_channels")
+}
+
+model AlertLog {
+  id           String               @id @default(uuid())
+  incidentId   String               @map("incident_id")
+  channelId    String?              @map("channel_id")
+  alertType    AlertType            @map("alert_type")
+  recipient    String
+  status       String               @default("SENT")
+  errorMessage String?              @map("error_message")
+  sentAt       DateTime             @default(now()) @map("sent_at")
+
+  incident     Incident             @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  channel      NotificationChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@map("alert_logs")
+}
+
+model StatusPage {
+  id           String              @id @default(uuid())
+  teamId       String              @map("team_id")
+  name         String
+  slug         String              @unique
+  description  String?
+  logoUrl      String?             @map("logo_url")
+  isPublic     Boolean             @default(true) @map("is_public")
+  customDomain String?             @map("custom_domain")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  team         Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  monitors     StatusPageMonitor[]
+
+  @@map("status_pages")
+}
+
+model StatusPageMonitor {
+  id           String     @id @default(uuid())
+  statusPageId String     @map("status_page_id")
+  monitorId    String     @map("monitor_id")
+  displayOrder Int        @default(0) @map("display_order")
+
+  statusPage   StatusPage @relation(fields: [statusPageId], references: [id], onDelete: Cascade)
+  monitor      Monitor    @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@unique([statusPageId, monitorId])
+  @@map("status_page_monitors")
+}

@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: devpulse-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: devpulse
+      POSTGRES_PASSWORD: devpulse_password
+      POSTGRES_DB: devpulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: devpulse-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: "postgresql://devpulse:devpulse_password@postgres:5432/devpulse?schema=public"
+      JWT_SECRET: "devpulse-super-secret-jwt-key-minimum-32-chars-long-zero-budget"
+      JWT_EXPIRES_IN: "7d"
+      PORT: 5000
+      NODE_ENV: "production"
+      FRONTEND_URL: "http://localhost:3000"
+      RESEND_API_KEY: ""
+      RESEND_FROM_EMAIL: "onboarding@resend.dev"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: devpulse-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:5000/api"
+      NODE_ENV: "production"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
