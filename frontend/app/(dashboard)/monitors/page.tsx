@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Clock,
   ArrowUpDown,
+  Lock,
 } from "lucide-react";
 import { formatTimeAgo } from "@/lib/utils";
 
@@ -156,6 +157,18 @@ export default function MonitorsPage() {
                     <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                       {m.httpMethod}
                     </span>
+                    {m.sslDetails && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-mono flex items-center gap-1 ${
+                          m.sslDetails.daysRemaining > 30
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                        }`}
+                      >
+                        <Lock className="h-2.5 w-2.5" />
+                        SSL: {m.sslDetails.daysRemaining}d
+                      </span>
+                    )}
                     {m.isPaused && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
                         Paused

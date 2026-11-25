@@ -17,6 +17,14 @@
   - In-memory interval scheduler (5m, 10m, 15m, 30m intervals) requiring zero Redis or BullMQ.
   - Microsecond latency telemetry (`process.hrtime.bigint()`) tracking DNS, TCP, TLS, TTFB, and total response time.
   - Consecutive failure damping (2-failure threshold) to prevent false alerts from transient network noise.
+- **SSL/TLS Certificate Expiration & Health Telemetry**:
+  - Automatically inspects peer certificates on all HTTPS endpoints.
+  - Tracks certificate issuer, subject CN, valid period, and countdown of days remaining.
+  - Visual status badges and proactive alert buffers before certificates expire.
+- **Interactive Live Diagnostic Prober**:
+  - On-demand instant endpoint diagnostic execution directly from the dashboard.
+  - Detailed latency waterfall breakdown (DNS, TCP handshake, TLS negotiation, TTFB, Total).
+  - Live inspection of response headers and SSL status.
 - **Enterprise-Grade SSRF Protection**:
   - Blocks loopback (`127.0.0.1`, `::1`), RFC 1918 private subnets, link-local addresses, and cloud metadata (`169.254.169.254`).
   - Pre-flight DNS resolution with socket pinning to prevent DNS rebinding attacks.
@@ -25,8 +33,9 @@
   - Automatically opens incidents upon confirmed downtime (`INVESTIGATING`).
   - Allows manual investigation updates (`IDENTIFIED`, `MONITORING`).
   - Automatically detects service recovery and resolves incidents with duration metrics.
-- **Alert Dispatching & Cooldown**:
-  - Email alerts via Resend Free tier (3,000 emails/month).
+- **Multi-Channel Alert Dispatching (Email & Discord Webhooks)**:
+  - Transactional email alerts via Resend Free tier (3,000 emails/month).
+  - Rich embedded Discord Webhook notifications for instant DevOps chat alerts.
   - 30-minute deduplication buffer to eliminate alert storms.
   - Graceful fallback mock logger if no email API key is configured.
 - **Telemetry Analytics**:
@@ -152,7 +161,7 @@ docker compose up --build
 
 ## 🧪 Automated Testing
 
-DevPulse includes 7 test suites covering 41 automated unit and integration tests:
+DevPulse includes 8 test suites covering 45 automated unit and integration tests:
 
 ```bash
 # Run all backend tests
@@ -164,7 +173,9 @@ npm --workspace=backend test
 - **Monitors**: CRUD, Pause/Resume toggle, Expected HTTP codes validation, Interval constraints.
 - **SSRF Protection**: Verification of blocked subnets (RFC 1918, Loopback, Cloud Metadata, Carrier-grade NAT, IPv6, non-HTTP protocols).
 - **Prober Engine**: Microsecond latency measurement, timeout detection, SSRF rejection.
+- **Live Diagnostics & SSL**: On-demand probe execution, timing waterfall, peer certificate extraction.
 - **Incident Lifecycle**: Automated incident creation on 2 consecutive failures, manual investigation updates, automatic resolution on recovery.
+- **Alert Channels & Discord**: Multi-channel notification dispatching, Discord webhooks embed payload generation.
 - **Status Pages**: Public unauthenticated retrieval, slug uniqueness.
 - **Teams**: Default team creation, member listing, email invitations.
 

@@ -28,6 +28,8 @@ enum IncidentStatus {
 
 enum AlertChannelType {
   EMAIL
+  DISCORD_WEBHOOK
+  SLACK_WEBHOOK
 }
 
 enum AlertType {
@@ -118,6 +120,7 @@ model Monitor {
   lastCheckedAt        DateTime?     @map("last_checked_at")
   uptimePercentage     Float         @default(100.0) @map("uptime_percentage")
   consecutiveFailures  Int           @default(0) @map("consecutive_failures")
+  sslDetails           Json?         @map("ssl_details")
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 

@@ -105,4 +105,25 @@ export class MonitorController {
       return next(error);
     }
   }
+
+  static async test(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await MonitorService.testExistingMonitor(
+        req.params.id,
+        req.user!.activeTeamId!
+      );
+      return sendSuccess(res, result);
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async testUrl(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await MonitorService.testArbitraryUrl(req.body);
+      return sendSuccess(res, result);
+    } catch (error) {
+      return next(error);
+    }
+  }
 }

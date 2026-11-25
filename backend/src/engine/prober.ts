@@ -3,7 +3,7 @@ import https from 'https';
 import net from 'net';
 import tls from 'tls';
 import { SSRFGuard } from './ssrf-guard';
-import { HttpMethod } from '@devpulse/shared';
+import { SslDetails } from '@devpulse/shared';
 import { logger } from '../utils/logger';
 
 export interface ProbeOptions {
@@ -28,6 +28,8 @@ export interface ProbeResult {
     ttfb?: number;
     total?: number;
   };
+  sslDetails?: SslDetails;
+  responseHeaders?: Record<string, string>;
 }
 
 export class Prober {
@@ -53,7 +55,6 @@ export class Prober {
     const port = parsedUrl.port ? parseInt(parsedUrl.port, 10) : isHttps ? 443 : 80;
 
     const startTime = process.hrtime.bigint();
-    let dnsDoneTime = startTime;
     let connectDoneTime = startTime;
     let tlsDoneTime = startTime;
     let firstByteTime = startTime;
@@ -124,6 +125,43 @@ export class Prober {
         async (res) => {
           firstByteTime = process.hrtime.bigint();
 
+          // Extract SSL Certificate Details for HTTPS targets
+          let sslDetails: SslDetails | undefined;
+          if (isHttps && res.socket && 'getPeerCertificate' in res.socket) {
+            try {
+              const cert = (res.socket as tls.TLSSocket).getPeerCertificate(true);
+              if (cert && cert.valid_to) {
+                const validToDate = new Date(cert.valid_to);
+                const now = new Date();
+                const daysRemaining = Math.max(
+                  0,
+                  Math.ceil((validToDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                );
+                sslDetails = {
+                  issuer:
+                    (cert.issuer as any)?.O ||
+                    (cert.issuer as any)?.CN ||
+                    'Trusted Certificate Authority',
+                  subject: (cert.subject as any)?.CN || parsedUrl.hostname,
+                  validFrom: cert.valid_from,
+                  validTo: cert.valid_to,
+                  daysRemaining,
+                  isValid: validToDate > now,
+                };
+              }
+            } catch (err) {
+              logger.debug('Failed to inspect peer certificate:', err);
+            }
+          }
+
+          // Format response headers preview
+          const responseHeaders: Record<string, string> = {};
+          for (const [key, val] of Object.entries(res.headers)) {
+            if (val !== undefined) {
+              responseHeaders[key] = Array.isArray(val) ? val.join(', ') : val;
+            }
+          }
+
           // Check for Redirects (301, 302, 303, 307, 308)
           const statusCode = res.statusCode || 0;
           if (
@@ -139,6 +177,8 @@ export class Prober {
                 statusCode,
                 responseTimeMs: totalMs,
                 errorMessage: `Exceeded maximum redirect limit of ${maxRedirects}`,
+                sslDetails,
+                responseHeaders,
               });
             }
 
@@ -162,10 +202,13 @@ export class Prober {
             const endTime = process.hrtime.bigint();
             const totalMs = Number((endTime - startTime) / BigInt(1e6));
             const ttfbMs = Number((firstByteTime - startTime) / BigInt(1e6));
+            const tcpMs = Number((connectDoneTime - startTime) / BigInt(1e6));
+            const tlsMs = isHttps ? Number((tlsDoneTime - connectDoneTime) / BigInt(1e6)) : 0;
 
-            const expectedCodes = options.expectedStatusCodes.length > 0
-              ? options.expectedStatusCodes
-              : [200];
+            const expectedCodes =
+              options.expectedStatusCodes.length > 0
+                ? options.expectedStatusCodes
+                : [200];
             const isSuccess = expectedCodes.includes(statusCode);
 
             safeResolve({
@@ -178,7 +221,11 @@ export class Prober {
               timingDetails: {
                 total: totalMs,
                 ttfb: ttfbMs,
+                tcp: Math.max(0, tcpMs),
+                tls: Math.max(0, tlsMs),
               },
+              sslDetails,
+              responseHeaders,
             });
           });
         }

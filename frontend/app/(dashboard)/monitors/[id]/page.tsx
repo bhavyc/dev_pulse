@@ -16,6 +16,11 @@ import {
   AlertTriangle,
   Server,
   Activity,
+  ShieldCheck,
+  Zap,
+  Lock,
+  X,
+  Layers,
 } from "lucide-react";
 import { formatTimeAgo } from "@/lib/utils";
 import {
@@ -36,6 +41,8 @@ export default function MonitorDetailPage({
   const router = useRouter();
   const [monitor, setMonitor] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProbing, setIsProbing] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
 
   const fetchDetails = async () => {
     try {
@@ -75,6 +82,20 @@ export default function MonitorDetailPage({
     }
   };
 
+  const handleRunDiagnostic = async () => {
+    if (!monitor) return;
+    setIsProbing(true);
+    try {
+      const res = await apiClient.post<any>(`/monitors/${monitor.id}/test`);
+      setDiagnosticResult(res.data);
+      fetchDetails();
+    } catch (err: any) {
+      alert(err.message || "Diagnostic probe failed");
+    } finally {
+      setIsProbing(false);
+    }
+  };
+
   if (isLoading) {
     return <div className="text-xs text-slate-400 animate-pulse">Loading monitor telemetry...</div>;
   }
@@ -101,6 +122,9 @@ export default function MonitorDetailPage({
       latency: c.responseTimeMs || 0,
       status: c.statusCode,
     }));
+
+  const ssl = monitor.sslDetails;
+  const isHttps = monitor.url.startsWith("https://");
 
   return (
     <div className="space-y-6">
@@ -132,6 +156,20 @@ export default function MonitorDetailPage({
               >
                 {monitor.isPaused ? "PAUSED" : monitor.currentStatus}
               </span>
+              {isHttps && ssl && (
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
+                    ssl.daysRemaining > 30
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : ssl.daysRemaining > 7
+                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      : "bg-red-500/10 text-red-400 border border-red-500/20"
+                  }`}
+                >
+                  <Lock className="h-2.5 w-2.5" />
+                  SSL: {ssl.daysRemaining}d left
+                </span>
+              )}
             </div>
             <a
               href={monitor.url}
@@ -144,17 +182,99 @@ export default function MonitorDetailPage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleTogglePause} className="gap-1.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleRunDiagnostic}
+            isLoading={isProbing}
+            className="gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-xs"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Live Diagnostic Probe
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleTogglePause} className="gap-1.5 text-xs">
             {monitor.isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
             {monitor.isPaused ? "Resume" : "Pause"}
           </Button>
-          <Button variant="danger" size="sm" onClick={handleDelete} className="gap-1.5">
+          <Button variant="danger" size="sm" onClick={handleDelete} className="gap-1.5 text-xs">
             <Trash2 className="h-3.5 w-3.5" />
             Delete
           </Button>
         </div>
       </div>
+
+      {/* Live Diagnostic Probe Drawer / Card */}
+      {diagnosticResult && (
+        <div className="rounded-xl border border-indigo-500/30 bg-[#0c0e15] p-5 space-y-4 shadow-lg shadow-indigo-500/5 relative">
+          <div className="flex items-center justify-between pb-3 border-b border-[#232838]">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-md bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <Zap className="h-3.5 w-3.5" />
+              </div>
+              <h3 className="text-sm font-semibold text-white">Live Diagnostic Probe Result</h3>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
+                  diagnosticResult.isSuccess
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : "bg-red-500/10 text-red-400 border border-red-500/20"
+                }`}
+              >
+                {diagnosticResult.statusCode || "ERR"} {diagnosticResult.isSuccess ? "PASS" : "FAIL"}
+              </span>
+            </div>
+            <button
+              onClick={() => setDiagnosticResult(null)}
+              className="text-slate-400 hover:text-slate-200 p-1"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="bg-[#11131a] p-3 rounded-lg border border-[#232838]">
+              <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Latency</span>
+              <p className="text-base font-bold font-mono text-indigo-400 mt-1">
+                {diagnosticResult.responseTimeMs} ms
+              </p>
+            </div>
+            <div className="bg-[#11131a] p-3 rounded-lg border border-[#232838]">
+              <span className="text-[10px] text-slate-500 uppercase font-semibold">TTFB (First Byte)</span>
+              <p className="text-base font-bold font-mono text-white mt-1">
+                {diagnosticResult.timingDetails?.ttfb || diagnosticResult.responseTimeMs} ms
+              </p>
+            </div>
+            <div className="bg-[#11131a] p-3 rounded-lg border border-[#232838]">
+              <span className="text-[10px] text-slate-500 uppercase font-semibold">TCP / TLS</span>
+              <p className="text-base font-bold font-mono text-white mt-1">
+                {diagnosticResult.timingDetails?.tcp || 0}ms / {diagnosticResult.timingDetails?.tls || 0}ms
+              </p>
+            </div>
+            <div className="bg-[#11131a] p-3 rounded-lg border border-[#232838]">
+              <span className="text-[10px] text-slate-500 uppercase font-semibold">SSL Certificate</span>
+              <p className="text-xs font-semibold text-emerald-400 mt-1 truncate">
+                {diagnosticResult.sslDetails
+                  ? `${diagnosticResult.sslDetails.daysRemaining}d left (${diagnosticResult.sslDetails.issuer})`
+                  : "N/A (HTTP)"}
+              </p>
+            </div>
+          </div>
+
+          {/* Response Headers Preview */}
+          {diagnosticResult.responseHeaders && (
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-slate-400">Response Headers</span>
+              <div className="bg-[#11131a] p-3 rounded-lg border border-[#232838] font-mono text-[11px] text-slate-300 max-h-36 overflow-y-auto space-y-0.5">
+                {Object.entries(diagnosticResult.responseHeaders).map(([k, v]) => (
+                  <div key={k} className="truncate">
+                    <span className="text-indigo-400">{k}:</span> {String(v)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -192,6 +312,54 @@ export default function MonitorDetailPage({
           <p className="text-[10px] text-slate-500">Threshold: 2 consecutive failures</p>
         </div>
       </div>
+
+      {/* SSL Certificate Card (if HTTPS) */}
+      {isHttps && (
+        <div className="rounded-xl border border-[#232838] bg-[#11131a] p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+              <h3 className="text-sm font-semibold text-white">SSL / TLS Certificate Health</h3>
+            </div>
+            {ssl && (
+              <span
+                className={`text-xs px-2.5 py-0.5 rounded font-mono font-medium ${
+                  ssl.daysRemaining > 30
+                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                    : ssl.daysRemaining > 7
+                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                    : "bg-red-500/10 text-red-400 border border-red-500/20"
+                }`}
+              >
+                {ssl.daysRemaining} days remaining
+              </span>
+            )}
+          </div>
+
+          {ssl ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="bg-[#0c0e15] p-3 rounded-lg border border-[#232838]">
+                <span className="text-[10px] text-slate-500">Issuer / CA</span>
+                <p className="font-semibold text-slate-200 mt-0.5">{ssl.issuer || "Unknown"}</p>
+              </div>
+              <div className="bg-[#0c0e15] p-3 rounded-lg border border-[#232838]">
+                <span className="text-[10px] text-slate-500">Subject (CN)</span>
+                <p className="font-semibold text-slate-200 mt-0.5 truncate">{ssl.subject || "Unknown"}</p>
+              </div>
+              <div className="bg-[#0c0e15] p-3 rounded-lg border border-[#232838]">
+                <span className="text-[10px] text-slate-500">Expires On</span>
+                <p className="font-semibold text-slate-200 mt-0.5">
+                  {ssl.validTo ? new Date(ssl.validTo).toLocaleDateString() : "Unknown"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Certificate telemetry will be gathered on the next scheduled check or live diagnostic probe.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Latency History Chart */}
       <div className="rounded-xl border border-[#232838] bg-[#11131a] p-5 space-y-4">

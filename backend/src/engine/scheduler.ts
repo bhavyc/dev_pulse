@@ -2,7 +2,8 @@ import { prisma } from '../config/database';
 import { Prober, ProbeResult } from './prober';
 import { WorkerPool } from './worker-pool';
 import { EmailService } from '../services/email.service';
-import { MonitorStatus, IncidentStatus, AlertType } from '@devpulse/shared';
+import { WebhookService } from '../services/webhook.service';
+import { MonitorStatus, IncidentStatus, AlertType, AlertChannelType } from '@devpulse/shared';
 import { logger } from '../utils/logger';
 
 export class MonitoringScheduler {
@@ -132,6 +133,7 @@ export class MonitoringScheduler {
         currentStatus: newStatus,
         consecutiveFailures,
         uptimePercentage,
+        sslDetails: result.sslDetails ? JSON.parse(JSON.stringify(result.sslDetails)) : undefined,
       },
     });
   }
@@ -245,12 +247,30 @@ export class MonitoringScheduler {
           (type === AlertType.DOWN && channel.notifyOnDown) ||
           (type === AlertType.RECOVERY && channel.notifyOnRecovery)
         ) {
-          // Send actual email via EmailService
           let sent = false;
-          if (type === AlertType.DOWN) {
-            sent = await EmailService.sendDownAlert(channel.destination, monitor.name, monitor.url, details);
+          if (channel.type === AlertChannelType.DISCORD_WEBHOOK) {
+            sent = await WebhookService.sendDiscordAlert(
+              channel.destination,
+              type === AlertType.DOWN,
+              monitor.name,
+              monitor.url,
+              details,
+              durationSeconds
+            );
+          } else if (channel.type === AlertChannelType.SLACK_WEBHOOK) {
+            sent = await WebhookService.sendSlackAlert(
+              channel.destination,
+              type === AlertType.DOWN,
+              monitor.name,
+              monitor.url,
+              details
+            );
           } else {
-            sent = await EmailService.sendRecoveryAlert(channel.destination, monitor.name, monitor.url, durationSeconds);
+            if (type === AlertType.DOWN) {
+              sent = await EmailService.sendDownAlert(channel.destination, monitor.name, monitor.url, details);
+            } else {
+              sent = await EmailService.sendRecoveryAlert(channel.destination, monitor.name, monitor.url, durationSeconds);
+            }
           }
 
           await prisma.alertLog.create({

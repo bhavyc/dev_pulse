@@ -9,8 +9,10 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', MonitorController.list);
+router.post('/test-url', MonitorController.testUrl);
 router.post('/', validateRequest(createMonitorSchema), MonitorController.create);
 router.get('/:id', MonitorController.getById);
+router.post('/:id/test', MonitorController.test);
 router.put('/:id', validateRequest(updateMonitorSchema), MonitorController.update);
 router.delete('/:id', MonitorController.delete);
 router.post('/:id/pause', MonitorController.pause);

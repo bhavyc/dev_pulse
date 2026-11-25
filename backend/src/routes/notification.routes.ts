@@ -5,13 +5,16 @@ import { sendSuccess, sendError } from '../utils/response';
 import { z } from 'zod';
 import { validateRequest } from '../middleware/validate.middleware';
 
+import { AlertChannelType } from '@devpulse/shared';
+
 const router = Router();
 
 router.use(authenticate);
 
 const channelSchema = z.object({
   body: z.object({
-    destination: z.string().email('Please enter a valid email address'),
+    type: z.nativeEnum(AlertChannelType).default(AlertChannelType.EMAIL),
+    destination: z.string().min(5, 'Valid destination (email or webhook URL) is required'),
     notifyOnDown: z.boolean().default(true),
     notifyOnRecovery: z.boolean().default(true),
   }),
@@ -30,13 +33,13 @@ router.get('/channels', async (req: Request, res: Response, next: NextFunction) 
   }
 });
 
-// Add email channel
+// Add notification channel
 router.post('/channels', validateRequest(channelSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const channel = await prisma.notificationChannel.create({
       data: {
         teamId: req.user!.activeTeamId!,
-        type: 'EMAIL',
+        type: req.body.type || AlertChannelType.EMAIL,
         destination: req.body.destination,
         notifyOnDown: req.body.notifyOnDown,
         notifyOnRecovery: req.body.notifyOnRecovery,

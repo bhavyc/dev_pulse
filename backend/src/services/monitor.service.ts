@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { AppError } from '../middleware/error.middleware';
 import { MonitorStatus, HttpMethod } from '@devpulse/shared';
+import { Prober } from '../engine/prober';
 
 export class MonitorService {
   static async listMonitors(teamId: string) {
@@ -206,6 +207,87 @@ export class MonitorService {
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  static async testExistingMonitor(monitorId: string, teamId: string) {
+    const monitor = await prisma.monitor.findFirst({
+      where: { id: monitorId, teamId },
+    });
+
+    if (!monitor) {
+      throw new AppError('Monitor not found', 404, 'NOT_FOUND');
+    }
+
+    const result = await Prober.executeProbe({
+      url: monitor.url,
+      httpMethod: monitor.httpMethod,
+      timeoutSeconds: monitor.timeoutSeconds,
+      expectedStatusCodes: monitor.expectedStatusCodes,
+      requestHeaders: monitor.requestHeaders as Record<string, string>,
+      requestBody: monitor.requestBody,
+    });
+
+    // Save check record
+    await prisma.monitorCheck.create({
+      data: {
+        monitorId: monitor.id,
+        statusCode: result.statusCode,
+        responseTimeMs: result.responseTimeMs,
+        isSuccess: result.isSuccess,
+        errorMessage: result.errorMessage,
+        timingDetails: result.timingDetails,
+        checkedAt: new Date(),
+      },
+    });
+
+    // Update monitor lastCheckedAt and sslDetails
+    await prisma.monitor.update({
+      where: { id: monitor.id },
+      data: {
+        lastCheckedAt: new Date(),
+        sslDetails: result.sslDetails ? JSON.parse(JSON.stringify(result.sslDetails)) : undefined,
+      },
+    });
+
+    return {
+      isSuccess: result.isSuccess,
+      statusCode: result.statusCode,
+      responseTimeMs: result.responseTimeMs,
+      errorMessage: result.errorMessage,
+      timingDetails: result.timingDetails,
+      sslDetails: result.sslDetails,
+      responseHeaders: result.responseHeaders,
+      testedAt: new Date().toISOString(),
+    };
+  }
+
+  static async testArbitraryUrl(data: {
+    url: string;
+    httpMethod?: string;
+    timeoutSeconds?: number;
+    expectedStatusCodes?: number[];
+    requestHeaders?: Record<string, string>;
+    requestBody?: string;
+  }) {
+    const result = await Prober.executeProbe({
+      url: data.url,
+      httpMethod: data.httpMethod || 'GET',
+      timeoutSeconds: data.timeoutSeconds || 10,
+      expectedStatusCodes: data.expectedStatusCodes || [200],
+      requestHeaders: data.requestHeaders,
+      requestBody: data.requestBody,
+    });
+
+    return {
+      isSuccess: result.isSuccess,
+      statusCode: result.statusCode,
+      responseTimeMs: result.responseTimeMs,
+      errorMessage: result.errorMessage,
+      timingDetails: result.timingDetails,
+      sslDetails: result.sslDetails,
+      responseHeaders: result.responseHeaders,
+      testedAt: new Date().toISOString(),
     };
   }
 }

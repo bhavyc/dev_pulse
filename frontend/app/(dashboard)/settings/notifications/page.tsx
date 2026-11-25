@@ -4,13 +4,14 @@ import React, { useEffect, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Bell, Mail, Trash2, Plus, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { Bell, Mail, Trash2, Plus, MessageSquare, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { formatTimeAgo } from "@/lib/utils";
 
 export default function NotificationsSettingsPage() {
   const [channels, setChannels] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
-  const [newEmail, setNewEmail] = useState("");
+  const [channelType, setChannelType] = useState<"EMAIL" | "DISCORD_WEBHOOK">("EMAIL");
+  const [destination, setDestination] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -35,19 +36,20 @@ export default function NotificationsSettingsPage() {
 
   const handleAddChannel = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmail.trim()) return;
+    if (!destination.trim()) return;
     setIsAdding(true);
 
     try {
       await apiClient.post("/notifications/channels", {
-        destination: newEmail.trim(),
+        type: channelType,
+        destination: destination.trim(),
         notifyOnDown: true,
         notifyOnRecovery: true,
       });
-      setNewEmail("");
+      setDestination("");
       fetchData();
     } catch (err: any) {
-      alert(err.message || "Failed to add email channel");
+      alert(err.message || "Failed to add alert channel");
     } finally {
       setIsAdding(false);
     }
@@ -68,25 +70,61 @@ export default function NotificationsSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white tracking-tight">Notification Channels</h1>
         <p className="text-xs text-slate-400">
-          Configure where downtime and recovery alerts are dispatched with 30-minute alert cooldown protection
+          Configure where downtime and recovery alerts are dispatched (Email or Discord Webhooks) with 30-minute alert cooldown protection
         </p>
       </div>
 
-      {/* Add Email Channel Form */}
+      {/* Add Alert Channel Form */}
       <div className="rounded-xl border border-[#232838] bg-[#11131a] p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-white">Add Alert Recipient (Email)</h3>
-        <form onSubmit={handleAddChannel} className="flex flex-col sm:flex-row gap-3">
-          <Input
-            type="email"
-            placeholder="alerts@yourdomain.com"
-            value={newEmail}
-            onChange={(e) => setNewEmail(e.target.value)}
-            required
-            className="flex-1"
-          />
-          <Button type="submit" size="md" isLoading={isAdding} className="gap-1.5 shrink-0">
-            <Plus className="h-4 w-4" /> Add Recipient
-          </Button>
+        <h3 className="text-sm font-semibold text-white">Add Alert Recipient</h3>
+        <form onSubmit={handleAddChannel} className="space-y-3">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setChannelType("EMAIL")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                channelType === "EMAIL"
+                  ? "bg-indigo-600/10 text-indigo-400 border-indigo-500/30"
+                  : "text-slate-400 border-[#232838] hover:bg-[#151922]"
+              }`}
+            >
+              <Mail className="h-3.5 w-3.5" /> Email
+            </button>
+            <button
+              type="button"
+              onClick={() => setChannelType("DISCORD_WEBHOOK")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                channelType === "DISCORD_WEBHOOK"
+                  ? "bg-indigo-600/10 text-indigo-400 border-indigo-500/30"
+                  : "text-slate-400 border-[#232838] hover:bg-[#151922]"
+              }`}
+            >
+              <MessageSquare className="h-3.5 w-3.5" /> Discord Webhook
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input
+              type={channelType === "EMAIL" ? "email" : "url"}
+              placeholder={
+                channelType === "EMAIL"
+                  ? "alerts@yourdomain.com"
+                  : "https://discord.com/api/webhooks/..."
+              }
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              required
+              className="flex-1"
+            />
+            <Button type="submit" size="md" isLoading={isAdding} className="gap-1.5 shrink-0">
+              <Plus className="h-4 w-4" /> Add Channel
+            </Button>
+          </div>
+          <p className="text-[11px] text-slate-500">
+            {channelType === "EMAIL"
+              ? "Sends transactional outage notifications via Resend."
+              : "Posts rich embedded alert cards directly into your Discord ops channel."}
+          </p>
         </form>
       </div>
 
@@ -97,12 +135,21 @@ export default function NotificationsSettingsPage() {
           <div className="divide-y divide-[#232838]">
             {channels.map((ch) => (
               <div key={ch.id} className="py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                    <Mail className="h-4 w-4" />
+                <div className="flex items-center gap-3 truncate pr-2">
+                  <div className="h-8 w-8 rounded-lg bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+                    {ch.type === "DISCORD_WEBHOOK" ? (
+                      <MessageSquare className="h-4 w-4" />
+                    ) : (
+                      <Mail className="h-4 w-4" />
+                    )}
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-200">{ch.destination}</p>
+                  <div className="truncate">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-semibold text-slate-200 truncate">{ch.destination}</p>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
+                        {ch.type}
+                      </span>
+                    </div>
                     <p className="text-[11px] text-slate-500">
                       Down: {ch.notifyOnDown ? "Yes" : "No"} • Recovery: {ch.notifyOnRecovery ? "Yes" : "No"}
                     </p>
@@ -110,7 +157,7 @@ export default function NotificationsSettingsPage() {
                 </div>
                 <button
                   onClick={() => handleDeleteChannel(ch.id)}
-                  className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-[#151922] transition-colors"
+                  className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-[#151922] transition-colors shrink-0"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -150,7 +197,7 @@ export default function NotificationsSettingsPage() {
                         {log.alertType}
                       </span>
                     </td>
-                    <td className="py-2.5 font-mono">{log.recipient}</td>
+                    <td className="py-2.5 font-mono max-w-xs truncate">{log.recipient}</td>
                     <td className="py-2.5">
                       <span className="text-[10px] text-emerald-400">{log.status}</span>
                     </td>

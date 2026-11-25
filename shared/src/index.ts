@@ -29,6 +29,8 @@ export enum HttpMethod {
 
 export enum AlertChannelType {
   EMAIL = 'EMAIL',
+  DISCORD_WEBHOOK = 'DISCORD_WEBHOOK',
+  SLACK_WEBHOOK = 'SLACK_WEBHOOK',
 }
 
 export enum AlertType {
@@ -70,6 +72,32 @@ export interface TeamDto {
   createdAt: string;
 }
 
+export interface SslDetails {
+  issuer?: string;
+  subject?: string;
+  validFrom?: string;
+  validTo?: string;
+  daysRemaining?: number;
+  isValid?: boolean;
+}
+
+export interface DiagnosticProbeDto {
+  isSuccess: boolean;
+  statusCode?: number;
+  responseTimeMs: number;
+  errorMessage?: string;
+  timingDetails?: {
+    dns?: number;
+    tcp?: number;
+    tls?: number;
+    ttfb?: number;
+    total?: number;
+  };
+  sslDetails?: SslDetails;
+  responseHeaders?: Record<string, string>;
+  testedAt: string;
+}
+
 export interface MonitorDto {
   id: string;
   teamId: string;
@@ -87,6 +115,7 @@ export interface MonitorDto {
   lastCheckedAt?: string | null;
   uptimePercentage: number;
   consecutiveFailures: number;
+  sslDetails?: SslDetails | null;
   createdAt: string;
   updatedAt: string;
 }
